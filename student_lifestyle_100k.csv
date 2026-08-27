@@ -1,4 +1,4 @@
-Student_ID,Age,genero,Department,CGPA,Sleep_Duration,Study_Hours,Social_Media_Hours,atividade_fisica,nivel_estresse,Depression
+Student_ID,Age,Gender,Department,CGPA,Sleep_Duration,Study_Hours,Social_Media_Hours,Physical_Activity,Stress_Level,Depression
 1001,22,Female,Science,3.5,7.3,3.3,3.4,114,5,False
 1002,20,Male,Engineering,2.72,5.5,7.2,6.0,142,2,False
 1003,20,Male,Medical,3.01,5.4,2.3,1.8,137,3,False
