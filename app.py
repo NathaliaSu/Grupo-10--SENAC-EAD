@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
+from plotly.colors import sample_colorscale
 
 # Configuração visual da página
 st.set_page_config(page_title="Saúde Mental - Universitários", layout="wide")
@@ -186,6 +188,158 @@ try:
             }
         )
         st.plotly_chart(fig_notas_estresse, use_container_width=True)
+                st.divider()
+
+        # ==========================================
+        # GRÁFICO 6 - RICHARD
+        # SONO X ESTRESSE
+        # ==========================================
+
+        st.subheader("6. Relação entre Duração do Sono e Nível de Estresse")
+
+
+        # Calcula a média de sono para cada nível de estresse
+        sono_estresse = (
+            df_filtrado
+            .groupby("nivel_estresse", as_index=False)["Sleep_Duration"]
+            .mean()
+            .sort_values("nivel_estresse")
+        )
+
+
+        # Cria o gráfico
+        grafico_estresse = go.Figure()
+
+
+        # Define mínimo e máximo do nível de estresse
+        stress_min = sono_estresse["nivel_estresse"].min()
+        stress_max = sono_estresse["nivel_estresse"].max()
+
+
+        # Cria segmentos com transição suave de cores
+        for i in range(len(sono_estresse) - 1):
+
+            stress_medio = (
+                sono_estresse["nivel_estresse"].iloc[i]
+                + sono_estresse["nivel_estresse"].iloc[i + 1]
+            ) / 2
+
+
+            stress_normalizado = (
+                (stress_medio - stress_min)
+                / (stress_max - stress_min)
+            )
+
+
+            cor = sample_colorscale(
+                "YlOrRd",
+                stress_normalizado
+            )[0]
+
+
+            grafico_estresse.add_trace(
+                go.Scatter(
+                    x=[
+                        sono_estresse["nivel_estresse"].iloc[i],
+                        sono_estresse["nivel_estresse"].iloc[i + 1]
+                    ],
+
+                    y=[
+                        sono_estresse["Sleep_Duration"].iloc[i],
+                        sono_estresse["Sleep_Duration"].iloc[i + 1]
+                    ],
+
+                    mode="lines",
+
+                    line=dict(
+                        color=cor,
+                        width=3
+                    ),
+
+                    showlegend=False
+                )
+            )
+
+
+        # Adiciona os pontos coloridos
+        grafico_estresse.add_trace(
+            go.Scatter(
+                x=sono_estresse["nivel_estresse"],
+                y=sono_estresse["Sleep_Duration"],
+
+                mode="markers",
+
+                marker=dict(
+                    size=9,
+
+                    color=sono_estresse["nivel_estresse"],
+
+                    colorscale="YlOrRd",
+
+                    cmin=stress_min,
+                    cmax=stress_max,
+
+                    showscale=True,
+
+                    colorbar=dict(
+                        title=dict(
+                            text="Nível de<br>Estresse",
+                            font=dict(size=20)
+                        ),
+
+                        tickfont=dict(size=16),
+
+                        thickness=25,
+
+                        len=1
+                    )
+                ),
+
+                showlegend=False
+            )
+        )
+
+
+        # Configuração visual do gráfico
+        grafico_estresse.update_layout(
+            template="plotly_dark",
+
+            height=450,
+
+            font=dict(size=16),
+
+            xaxis=dict(
+                title=dict(
+                    text="Nível de Estresse",
+                    font=dict(size=20)
+                ),
+
+                tickfont=dict(size=16)
+            ),
+
+            yaxis=dict(
+                title=dict(
+                    text="Média da Duração do Sono (horas)",
+                    font=dict(size=20)
+                ),
+
+                tickfont=dict(size=16)
+            ),
+
+            margin=dict(
+                l=80,
+                r=110,
+                t=30,
+                b=80
+            )
+        )
+
+
+        # Exibe o gráfico
+        st.plotly_chart(
+            grafico_estresse,
+            use_container_width=True
+        )
 
     else:
         st.warning("Nenhum dado encontrado para os filtros selecionados. Ajuste os filtros na barra lateral.")
