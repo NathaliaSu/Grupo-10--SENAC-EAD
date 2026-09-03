@@ -1,348 +1,602 @@
 import streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
+import altair as alt
 from plotly.colors import sample_colorscale
 
-# Configuração visual da página
-st.set_page_config(page_title="Saúde Mental - Universitários", layout="wide")
-
-st.title("🧠 Dashboard: Saúde Mental e Hábitos de Universitários")
-st.markdown("Análise dos fatores associados à depressão, estresse e rotina acadêmica.")
-
-# Paleta de cores de alto contraste padrão
 CORES_ALTO_CONTRASTE = px.colors.qualitative.Bold
 
-# Carrega a base de dados
-@st.cache_data
-def carregar_dados():
-    df = pd.read_csv("base_tratada.csv")
-    
-    if "Depression" in df.columns:
-        df["Depression"] = df["Depression"].replace({True: "Sim", False: "Não", "True": "Sim", "False": "Não"})
-    
-    if "genero" in df.columns:
-        df["genero"] = df["genero"].replace({"Female": "Feminino", "Male": "Masculino", "Other": "Outros"})
-        
-    if "atividade_fisica" in df.columns:
-        df["atividade_fisica"] = df["atividade_fisica"].replace({True: "Sim", False: "Não", "True": "Sim", "False": "Não", 1: "Sim", 0: "Não"})
-        
-    return df
+st.set_page_config(layout="wide")
 
-try:
-    df = carregar_dados()
+st.title("Rede Social x Estresse")
+df = pd.read_csv("base_tratada.csv")
 
-    # --- FILTROS (BARRA LATERAL) ---
-    st.sidebar.header("⚙️ Filtros do Painel")
+df["Social_Media_Hours"] = df["Social_Media_Hours"].round()
+
+df_grafico = df.drop_duplicates(subset=["Social_Media_Hours"]).sample(10, random_state=42)
+df_grafico = df_grafico.sort_values(by="Social_Media_Hours")
+
+def formata_hora(valor):
+    h = int(valor)
+    return f"{h}:00"
+
+df_grafico["Tempo de Uso"] = df_grafico["Social_Media_Hours"].apply(formata_hora)
+
+chart = alt.Chart(df_grafico).mark_bar().encode(
+    x=alt.X(
+        'Tempo de Uso:N', 
+        sort=None, 
+        title='Tempo de uso de Redes Sociais',
+        axis=alt.Axis(labelAngle=0)
+    ),
+    y=alt.Y(
+        'nivel_estresse:Q', 
+        title='Nível de Estresse'
+    )
+)
+
+st.altair_chart(chart, use_container_width=True)
+
+
+# ==========================================
+# GRÁFICOS 2 E 3
+# ==========================================
+
+sem_depressão = df[df["Depression"] == False]
+com_depressão = df[df["Depression"] == True]
+
+quantidade = df["Depression"].value_counts()
+quantidade.index = ["Sem depressão", "Com depressão"]
+
+col1, col2 = st.columns(2)
+
+
+# ==========================================
+# GRÁFICO 2 - DISTRIBUIÇÃO POR DEPRESSÃO
+# ==========================================
+
+with col1:
+    st.subheader("Distribuição de estudantes por depressão")
     
-    genero_selecionado = st.sidebar.multiselect(
-        "Selecione o Gênero:",
-        options=df["genero"].dropna().unique(),
-        default=df["genero"].dropna().unique()
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    fig.patch.set_alpha(0)
+    ax.patch.set_alpha(0)
+    ax.tick_params(axis="both", colors="white")
+
+    total = quantidade.sum()
+
+    ax.pie(
+        quantidade,
+        labels=quantidade.index,
+        autopct=lambda pct: f"{pct:.1f}%\n({int(pct * total / 100):,})",
+        textprops={"color": "white"}
     )
 
-    sono_min = float(df["Sleep_Duration"].min())
-    sono_max = float(df["Sleep_Duration"].max())
-    sono_selecionado = st.sidebar.slider(
-        "Faixa de Tempo de Sono (horas):",
-        min_value=sono_min,
-        max_value=sono_max,
-        value=(sono_min, sono_max)
+    st.pyplot(fig)
+
+
+# ==========================================
+# GRÁFICO 3 - SOCIAL MEDIA X DEPRESSION
+# ==========================================
+
+media = df.groupby("Depression")["Social_Media_Hours"].mean()
+media.index = ["Sem depressão", "Com depressão"]
+
+with col2:
+    st.subheader("Social Media x Depression")
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    fig.patch.set_alpha(0)
+    ax.patch.set_alpha(0)
+
+    media.plot.bar(
+        ax=ax,
+        color=["#1f77b4", "#ff7f0e"]
     )
 
-    estudo_min = float(df["Study_Hours"].min())
-    estudo_max = float(df["Study_Hours"].max())
-    estudo_selecionado = st.sidebar.slider(
-        "Faixa de Horas de Estudo (diárias):",
-        min_value=estudo_min,
-        max_value=estudo_max,
-        value=(estudo_min, estudo_max)
+    ax.tick_params(axis="both", colors="white")
+    ax.set_ylabel("Horas", color="white")
+    ax.set_title("Média de uso de redes sociais", color="white")
+
+    ax.bar_label(
+        ax.containers[0],
+        labels=[f"{valor:.2f} h" for valor in media],
+        padding=3,
+        fontsize=14,
+        color="white"
     )
 
-    redes_min = float(df["Social_Media_Hours"].min())
-    redes_max = float(df["Social_Media_Hours"].max())
-    redes_selecionado = st.sidebar.slider(
-        "Faixa de Horas em Redes Sociais:",
-        min_value=redes_min,
-        max_value=redes_max,
-        value=(redes_min, redes_max)
+    ax.set_title("Média de uso de redes sociais")
+    ax.set_ylabel("Horas")
+    ax.tick_params(axis="x", labelrotation=0)
+    ax.set_ylim(0, 4)
+
+    ax.plot(
+        [0, 1],
+        [media.iloc[0], media.iloc[0]],
+        linestyle="--",
+        color="#1f77b4"
     )
 
-    # Aplica TODOS os filtros na tabela
-    df_filtrado = df[
-        (df["genero"].isin(genero_selecionado)) &
-        (df["Sleep_Duration"] >= sono_selecionado[0]) & 
-        (df["Sleep_Duration"] <= sono_selecionado[1]) &
-        (df["Study_Hours"] >= estudo_selecionado[0]) & 
-        (df["Study_Hours"] <= estudo_selecionado[1]) &
-        (df["Social_Media_Hours"] >= redes_selecionado[0]) & 
-        (df["Social_Media_Hours"] <= redes_selecionado[1])
-    ]
+    st.pyplot(fig)
 
-    # --- MÉTRICAS RÁPIDAS (KPIs) ---
-    st.subheader("Visão Geral da Amostra")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Estudantes Analisados", f"{len(df_filtrado):,}")
-    
-    if not df_filtrado.empty:
-        col2.metric("Nível Médio de Estresse", f"{df_filtrado['nivel_estresse'].mean():.0f}")
-        col3.metric("Média de Horas de Sono", f"{df_filtrado['Sleep_Duration'].mean():.0f} h")
-    else:
-        col2.metric("Nível Médio de Estresse", "0")
-        col3.metric("Média de Horas de Sono", "0 h")
 
-    st.divider()
+# ==========================================
+# GRÁFICOS 4 E 5
+# ==========================================
 
-    if not df_filtrado.empty:
-        # --- PRIMEIRA LINHA DE GRÁFICOS (1 e 2) ---
-        c1, c2 = st.columns(2)
+c3, c4 = st.columns(2)
 
-        with c1:
-            st.subheader("1. Horas de Estudo x Notas")
-            fig_estudo_notas = px.scatter(
-                df_filtrado,
-                x="Study_Hours",
-                y="CGPA",
-                color="genero",
-                opacity=0.6,
-                color_discrete_sequence=CORES_ALTO_CONTRASTE,
-                labels={
-                    "Study_Hours": "Horas de Estudo Diárias", 
-                    "CGPA": "Nota (CGPA)",
-                    "genero": "Gênero"
-                }
-            )
-            st.plotly_chart(fig_estudo_notas, use_container_width=True)
 
-        with c2:
-            st.subheader("2. Atividade Física x Depressão")
-            df_ativ = df_filtrado.groupby(["atividade_fisica", "Depression"]).size().reset_index(name="Quantidade")
-            fig_ativ = px.bar(
-                df_ativ,
-                x="atividade_fisica",
-                y="Quantidade",
-                color="Depression",
-                barmode="group",
-                text_auto=True,
-                color_discrete_sequence=CORES_ALTO_CONTRASTE,
-                labels={
-                    "atividade_fisica": "Pratica Atividade Física",
-                    "Quantidade": "Total de Estudantes",
-                    "Depression": "Sintomas Depressivos"
-                }
-            )
-            fig_ativ.update_traces(texttemplate='%{y:.0f}', textposition='outside')
-            st.plotly_chart(fig_ativ, use_container_width=True)
+# ==========================================
+# GRÁFICO 4 - JULIA
+# NÍVEL DE ESTRESSE X DEPRESSÃO
+# ==========================================
 
-        st.divider()
+with c3:
+    st.subheader("4. Nível de Estresse x Depressão")
 
-        # --- SEGUNDA LINHA DE GRÁFICOS (3 e 4) ---
-        c3, c4 = st.columns(2)
+    # Usa todos os estudantes da base
+    df_amostra_3 = df.copy()
 
-        with c3:
-            st.subheader("3. Redes Sociais x Notas")
-            df_redes_notas = df_filtrado.groupby("Social_Media_Hours")["CGPA"].mean().reset_index()
-            df_redes_notas["CGPA"] = df_redes_notas["CGPA"].round(0)
-            fig_redes_notas = px.line(
-                df_redes_notas,
-                x="Social_Media_Hours",
-                y="CGPA",
-                markers=True,
-                color_discrete_sequence=CORES_ALTO_CONTRASTE,
-                labels={
-                    "Social_Media_Hours": "Horas em Redes Sociais",
-                    "CGPA": "Média da Nota (CGPA)"
-                }
-            )
-            st.plotly_chart(fig_redes_notas, use_container_width=True)
+    # Cria grupos de nível de estresse
+    df_amostra_3["Grupo_Estresse"] = pd.cut(
+        df_amostra_3["nivel_estresse"],
+        bins=[0, 3, 6, 10],
+        labels=[
+            "Baixo (1–3)",
+            "Moderado (4–6)",
+            "Alto (7–10)"
+        ],
+        include_lowest=True
+    )
 
-        with c4:
-            st.subheader("4. Redes Sociais, Sono e Depressão")
-            fig_redes_dep_sono = px.scatter(
-                df_filtrado,
-                x="Social_Media_Hours",
-                y="Sleep_Duration",
-                color="Depression",
-                opacity=0.6,
-                color_discrete_sequence=CORES_ALTO_CONTRASTE,
-                labels={
-                    "Social_Media_Hours": "Horas em Redes Sociais",
-                    "Sleep_Duration": "Horas de Sono",
-                    "Depression": "Sintomas Depressivos"
-                }
-            )
-            st.plotly_chart(fig_redes_dep_sono, use_container_width=True)
-
-        st.divider()
-
-        # --- TERCEIRA LINHA DE GRÁFICO (5) ---
-        st.subheader("5. Notas x Estresse")
-        fig_notas_estresse = px.density_heatmap(
-            df_filtrado,
-            x="CGPA",
-            y="nivel_estresse",
-            color_continuous_scale="Viridis", # Cores de altíssimo contraste térmico (roxo, verde e amarelo)
-            labels={
-                "CGPA": "Nota (CGPA)",
-                "nivel_estresse": "Nível de Estresse"
-            }
+    # Conta estudantes por nível de estresse e depressão
+    df_g3 = (
+        df_amostra_3
+        .groupby(
+            ["Grupo_Estresse", "Depression"],
+            observed=False
         )
-        st.plotly_chart(fig_notas_estresse, use_container_width=True)
-                st.divider()
-
-        # ==========================================
-        # GRÁFICO 6 - RICHARD
-        # SONO X ESTRESSE
-        # ==========================================
-
-        st.subheader("6. Relação entre Duração do Sono e Nível de Estresse")
-
-
-        # Calcula a média de sono para cada nível de estresse
-        sono_estresse = (
-            df_filtrado
-            .groupby("nivel_estresse", as_index=False)["Sleep_Duration"]
-            .mean()
-            .sort_values("nivel_estresse")
+        .size()
+        .reset_index(
+            name="Quantidade"
         )
+    )
+
+    fig3 = px.bar(
+        df_g3,
+        x="Grupo_Estresse",
+        y="Quantidade",
+        color="Depression",
+        barmode="group",
+        text="Quantidade",
+        color_discrete_sequence=CORES_ALTO_CONTRASTE,
+        labels={
+            "Grupo_Estresse": "Nível de Estresse",
+            "Quantidade": "Quantidade de Estudantes",
+            "Depression": "Sintomas Depressivos"
+        }
+    )
+
+    # Formata os números nas barras
+    fig3.update_traces(
+        texttemplate="%{text:,.0f}",
+        textposition="outside"
+    )
+
+    # Configura o eixo Y
+    fig3.update_yaxes(
+        range=[0, 70000],
+        dtick=10000,
+        tickformat=","
+    )
+
+    st.plotly_chart(
+        fig3,
+        use_container_width=True
+    )
 
 
-        # Cria o gráfico
-        grafico_estresse = go.Figure()
+# ==========================================
+# GRÁFICO 5 - RICHARD
+# DISTRIBUIÇÃO DAS HORAS DE SONO
+# ==========================================
 
+with c4:
 
-        # Define mínimo e máximo do nível de estresse
-        stress_min = sono_estresse["nivel_estresse"].min()
-        stress_max = sono_estresse["nivel_estresse"].max()
+    st.subheader(
+        "5. Distribuição das Horas de Sono entre Estudantes"
+    )
 
+    # Cria uma cópia das colunas necessárias
+    distribuicao_sono = df[
+        [
+            "Depression",
+            "Sleep_Duration"
+        ]
+    ].copy()
 
-        # Cria segmentos com transição suave de cores
-        for i in range(len(sono_estresse) - 1):
+    # Converte os valores para texto
+    distribuicao_sono["Depression"] = (
+        distribuicao_sono["Depression"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
 
-            stress_medio = (
-                sono_estresse["nivel_estresse"].iloc[i]
-                + sono_estresse["nivel_estresse"].iloc[i + 1]
-            ) / 2
+    # Padroniza os nomes dos grupos
+    distribuicao_sono["Depression"] = (
+        distribuicao_sono["Depression"]
+        .map({
+            "false": "Sem Depressão",
+            "0": "Sem Depressão",
+            "no": "Sem Depressão",
+            "não": "Sem Depressão",
 
+            "true": "Com Depressão",
+            "1": "Com Depressão",
+            "yes": "Com Depressão",
+            "sim": "Com Depressão"
+        })
+    )
 
-            stress_normalizado = (
-                (stress_medio - stress_min)
-                / (stress_max - stress_min)
+    # Conta quantos estudantes existem
+    # em cada duração de sono
+    distribuicao_sono = (
+        distribuicao_sono
+        .groupby(
+            [
+                "Sleep_Duration",
+                "Depression"
+            ]
+        )
+        .size()
+        .reset_index(
+            name="Quantidade de Estudantes"
+        )
+    )
+
+    # Cria o gráfico de linhas
+    grafico_distribuicao = px.line(
+        distribuicao_sono,
+
+        x="Sleep_Duration",
+
+        y="Quantidade de Estudantes",
+
+        color="Depression",
+
+        markers=True,
+
+        # Azul = sem depressão
+        # Laranja = com depressão
+        color_discrete_map={
+            "Sem Depressão": "#1f77b4",
+            "Com Depressão": "#ff7f0e"
+        },
+
+        labels={
+            "Sleep_Duration": "Duração do Sono (horas)",
+
+            "Quantidade de Estudantes":
+                "Quantidade de Estudantes",
+
+            "Depression": "Grupo"
+        },
+
+        template="plotly_dark"
+    )
+
+    # Configura linhas e marcadores
+    grafico_distribuicao.update_traces(
+        line=dict(
+            width=3
+        ),
+
+        marker=dict(
+            size=7
+        )
+    )
+
+    # Configuração visual
+    grafico_distribuicao.update_layout(
+
+        font=dict(
+            size=16
+        ),
+
+        xaxis=dict(
+
+            title=dict(
+                text="Duração do Sono (horas)",
+                font=dict(
+                    size=20
+                )
+            ),
+
+            tickfont=dict(
+                size=16
             )
+        ),
 
+        yaxis=dict(
 
-            cor = sample_colorscale(
-                "YlOrRd",
-                stress_normalizado
-            )[0]
+            title=dict(
+                text="Quantidade de Estudantes",
+                font=dict(
+                    size=20
+                )
+            ),
 
+            tickfont=dict(
+                size=16
+            )
+        ),
 
-            grafico_estresse.add_trace(
-                go.Scatter(
-                    x=[
-                        sono_estresse["nivel_estresse"].iloc[i],
-                        sono_estresse["nivel_estresse"].iloc[i + 1]
-                    ],
+        legend=dict(
 
-                    y=[
-                        sono_estresse["Sleep_Duration"].iloc[i],
-                        sono_estresse["Sleep_Duration"].iloc[i + 1]
-                    ],
+            font=dict(
+                size=18
+            ),
 
-                    mode="lines",
+            title=dict(
 
-                    line=dict(
-                        color=cor,
-                        width=3
-                    ),
+                text="Grupo",
 
-                    showlegend=False
+                font=dict(
+                    size=20
                 )
             )
+        ),
+
+        height=450,
+
+        margin=dict(
+            l=100,
+            r=140,
+            t=30,
+            b=80
+        )
+    )
+
+    # Exibe o gráfico
+    st.plotly_chart(
+        grafico_distribuicao,
+        use_container_width=True
+    )
 
 
-        # Adiciona os pontos coloridos
-        grafico_estresse.add_trace(
-            go.Scatter(
-                x=sono_estresse["nivel_estresse"],
-                y=sono_estresse["Sleep_Duration"],
+# ==========================================
+# GRÁFICO 6 - RICHARD
+# SONO X ESTRESSE
+# ==========================================
 
-                mode="markers",
+st.divider()
 
-                marker=dict(
-                    size=9,
+st.subheader(
+    "6. Relação entre Duração do Sono e Nível de Estresse"
+)
 
-                    color=sono_estresse["nivel_estresse"],
 
-                    colorscale="YlOrRd",
+# Calcula a média de sono para cada nível de estresse
+sono_estresse = (
+    df
+    .groupby(
+        "nivel_estresse",
+        as_index=False
+    )["Sleep_Duration"]
+    .mean()
+    .sort_values(
+        "nivel_estresse"
+    )
+)
 
-                    cmin=stress_min,
-                    cmax=stress_max,
 
-                    showscale=True,
+# Cria o gráfico
+grafico_estresse = go.Figure()
 
-                    colorbar=dict(
-                        title=dict(
-                            text="Nível de<br>Estresse",
-                            font=dict(size=20)
-                        ),
 
-                        tickfont=dict(size=16),
+# Define mínimo e máximo do nível de estresse
+stress_min = sono_estresse[
+    "nivel_estresse"
+].min()
 
-                        thickness=25,
+stress_max = sono_estresse[
+    "nivel_estresse"
+].max()
 
-                        len=1
+
+# ==========================================
+# LINHA COM TRANSIÇÃO SUAVE DE CORES
+# ==========================================
+
+for i in range(
+    len(sono_estresse) - 1
+):
+
+    stress_medio = (
+        sono_estresse[
+            "nivel_estresse"
+        ].iloc[i]
+
+        +
+
+        sono_estresse[
+            "nivel_estresse"
+        ].iloc[i + 1]
+
+    ) / 2
+
+
+    stress_normalizado = (
+        stress_medio - stress_min
+    ) / (
+        stress_max - stress_min
+    )
+
+
+    cor = sample_colorscale(
+        "YlOrRd",
+        stress_normalizado
+    )[0]
+
+
+    grafico_estresse.add_trace(
+        go.Scatter(
+
+            x=[
+                sono_estresse[
+                    "nivel_estresse"
+                ].iloc[i],
+
+                sono_estresse[
+                    "nivel_estresse"
+                ].iloc[i + 1]
+            ],
+
+            y=[
+                sono_estresse[
+                    "Sleep_Duration"
+                ].iloc[i],
+
+                sono_estresse[
+                    "Sleep_Duration"
+                ].iloc[i + 1]
+            ],
+
+            mode="lines",
+
+            line=dict(
+                color=cor,
+                width=3
+            ),
+
+            showlegend=False
+        )
+    )
+
+
+# ==========================================
+# PONTOS COLORIDOS
+# ==========================================
+
+grafico_estresse.add_trace(
+    go.Scatter(
+
+        x=sono_estresse[
+            "nivel_estresse"
+        ],
+
+        y=sono_estresse[
+            "Sleep_Duration"
+        ],
+
+        mode="markers",
+
+        marker=dict(
+
+            size=9,
+
+            color=sono_estresse[
+                "nivel_estresse"
+            ],
+
+            colorscale="YlOrRd",
+
+            cmin=stress_min,
+
+            cmax=stress_max,
+
+            showscale=True,
+
+            colorbar=dict(
+
+                title=dict(
+
+                    text="Nível de<br>Estresse",
+
+                    font=dict(
+                        size=20
                     )
                 ),
 
-                showlegend=False
-            )
-        )
-
-
-        # Configuração visual do gráfico
-        grafico_estresse.update_layout(
-            template="plotly_dark",
-
-            height=450,
-
-            font=dict(size=16),
-
-            xaxis=dict(
-                title=dict(
-                    text="Nível de Estresse",
-                    font=dict(size=20)
+                tickfont=dict(
+                    size=16
                 ),
 
-                tickfont=dict(size=16)
-            ),
+                thickness=25,
 
-            yaxis=dict(
-                title=dict(
-                    text="Média da Duração do Sono (horas)",
-                    font=dict(size=20)
-                ),
-
-                tickfont=dict(size=16)
-            ),
-
-            margin=dict(
-                l=80,
-                r=110,
-                t=30,
-                b=80
+                len=1
             )
+        ),
+
+        showlegend=False
+    )
+)
+
+
+# ==========================================
+# CONFIGURAÇÃO VISUAL DO GRÁFICO 6
+# ==========================================
+
+grafico_estresse.update_layout(
+
+    template="plotly_dark",
+
+    height=450,
+
+    font=dict(
+        size=16
+    ),
+
+    xaxis=dict(
+
+        title=dict(
+
+            text="Nível de Estresse",
+
+            font=dict(
+                size=20
+            )
+        ),
+
+        tickfont=dict(
+            size=16
         )
+    ),
 
+    yaxis=dict(
 
-        # Exibe o gráfico
-        st.plotly_chart(
-            grafico_estresse,
-            use_container_width=True
+        title=dict(
+
+            text="Média da Duração do Sono (horas)",
+
+            font=dict(
+                size=20
+            )
+        ),
+
+        tickfont=dict(
+            size=16
         )
+    ),
 
-    else:
-        st.warning("Nenhum dado encontrado para os filtros selecionados. Ajuste os filtros na barra lateral.")
+    margin=dict(
+        l=80,
+        r=110,
+        t=30,
+        b=80
+    )
+)
 
-except FileNotFoundError:
-    st.error("⚠️ ERRO: O arquivo 'base_tratada.csv' não foi encontrado.")
+
+# Exibe o gráfico
+st.plotly_chart(
+    grafico_estresse,
+    use_container_width=True
+)
